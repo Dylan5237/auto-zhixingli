@@ -11,7 +11,7 @@
 
 ## 本地工作空间与 APO 初始化
 
-约定 Windows 工作目录：`D:\\_projects\\tools\\auto-zhixingli`。
+约定 Windows 工作目录：`D:\_projects\tools\auto-zhixingli`。
 
 此仓库作为项目事实源。请先将 GitHub 的 `main` 检出到上述目录，然后由本地 APO 机制执行工程初始化。**不要将 APO 的具体命令、配置文件或项目脚手架预先猜测并提交**；以你本地 APO 实际生成的结果为准。
 
