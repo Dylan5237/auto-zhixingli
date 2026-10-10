@@ -1,0 +1,52 @@
+# 本地采集的课程内容、笔记与日志（仓库公开，禁止提交）
+/data/
+/recordings/
+/captures/
+/transcripts/
+/notes/
+/logs/
+/screenshots/
+/runtime/
+/tmp/
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.webm
+*.mp4
+*.mkv
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# 本地认证与环境配置
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Windows / 编辑器 / 常见语言构建产物
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+dist/
+build/
+coverage/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# 浏览器测试用户资料
+/chrome-profile/
+/edge-profile/
+/user-data/
