@@ -22,6 +22,8 @@ const DEFAULT_CONFIG = {
   maxClicks: 20,                 // 单次加载累计点击上限，防跑飞
   haltKeywords: ['开始考试', '进入考试', '考试倒计时', '交卷', '验证码', '人脸', '拍照', '身份核验', '重新登录', '登录已过期'],
   candidateTextPattern: /下一|继续|next|学习|课程|章|节/i,
+  listMarkerText: '在学课程',        // 课程列表页标志文本（ion-segment 分段）
+  dumpCourseListCandidates: true,    // 到达列表页时自动输出课程条目候选
 };
 
 /* ---------- 纯逻辑（node 测试覆盖） ---------- */
@@ -79,6 +81,7 @@ function startRelay(userConfig) {
     clicks: 0,
     reported: new Set(),
     warned: new Set(),
+    listReported: false,
     endedFlags: new WeakSet(),
   };
   let stopped = false;
@@ -183,6 +186,22 @@ function startRelay(userConfig) {
       .map(describeClickable);
     log(`学习模式候选(${kind})：`, JSON.stringify(cands, null, 1));
     return cands;
+  }
+
+  function reportListCandidates() {
+    if (!cfg.dumpCourseListCandidates || state.listReported) return false;
+    const seg = [...doc.querySelectorAll('ion-segment-button,[role="tab"],.segment-button')]
+      .find((el) => (el.innerText || '').trim() === cfg.listMarkerText);
+    if (!seg) return false;
+    state.listReported = true;
+    const entries = [...doc.querySelectorAll('ion-item,.course-item,.course-card,.list-item,ion-card,a[href],div[ng-reflect-router-link]')]
+      .map((el, i) => ({ el, i, text: (el.innerText || '').trim().slice(0, 80) }))
+      .filter((e) => e.text.length >= 4 && e.text.length <= 80)
+      .slice(0, 20)
+      .map(({ el, i, text }) => ({ i, text, ...describeClickable(el) }));
+    log(`检测到课程列表页（“${cfg.listMarkerText}”），条目候选：`, JSON.stringify(entries, null, 1));
+    setBanner('已在课程列表页：条目候选见 Console');
+    return true;
   }
 
   function clickEl(el, why) {
@@ -344,8 +363,10 @@ function startRelay(userConfig) {
     }
     log(`已启动 relay v${RELAY_VERSION}，autoClick=${cfg.autoClick}，phase=${state.phase}`);
     setBanner(`接力 v1 已启动（autoClick=${cfg.autoClick}）`);
+    reportListCandidates();
     timers.push(setInterval(tick, cfg.tickMs));
     timers.push(setInterval(() => {
+      reportListCandidates();
       if (cfg.courseListUrl && location.href.startsWith(cfg.courseListUrl.split('#')[0]) && state.phase === 'watch') {
         state.phase = 'pick-course';
         onListPage();
