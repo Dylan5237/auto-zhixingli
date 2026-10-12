@@ -6,7 +6,7 @@
  */
 'use strict';
 
-const RELAY_VERSION = '0.1.0';
+const RELAY_VERSION = '0.1.1';
 
 const DEFAULT_CONFIG = {
   autoClick: false,              // true 才允许真实元素点击；false = 学习模式只观察
@@ -81,7 +81,7 @@ function startRelay(userConfig) {
     clicks: 0,
     reported: new Set(),
     warned: new Set(),
-    listReported: false,
+    listSig: null,
     endedFlags: new WeakSet(),
   };
   let stopped = false;
@@ -189,18 +189,21 @@ function startRelay(userConfig) {
   }
 
   function reportListCandidates() {
-    if (!cfg.dumpCourseListCandidates || state.listReported) return false;
-    const seg = [...doc.querySelectorAll('ion-segment-button,[role="tab"],.segment-button')]
-      .find((el) => (el.innerText || '').trim() === cfg.listMarkerText);
+    if (!cfg.dumpCourseListCandidates) return false;
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const seg = [...doc.querySelectorAll('ion-segment-button,[role="tab"],.segment-button,button,li,a,span')]
+      .find((el) => norm(el.innerText).includes(cfg.listMarkerText));
     if (!seg) return false;
-    state.listReported = true;
     const entries = [...doc.querySelectorAll('ion-item,.course-item,.course-card,.list-item,ion-card,a[href],div[ng-reflect-router-link]')]
-      .map((el, i) => ({ el, i, text: (el.innerText || '').trim().slice(0, 80) }))
+      .map((el, i) => ({ el, i, text: norm(el.innerText).slice(0, 80) }))
       .filter((e) => e.text.length >= 4 && e.text.length <= 80)
       .slice(0, 20)
       .map(({ el, i, text }) => ({ i, text, ...describeClickable(el) }));
+    const sig = JSON.stringify(entries.map((e) => e.text));
+    if (sig === state.listSig) return false;   // 条目内容没变就不重复输出
+    state.listSig = sig;
     log(`检测到课程列表页（“${cfg.listMarkerText}”），条目候选：`, JSON.stringify(entries, null, 1));
-    setBanner('已在课程列表页：条目候选见 Console');
+    if (entries.length) setBanner('检测到课程列表页：条目候选见 Console');
     return true;
   }
 
