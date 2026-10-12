@@ -20,7 +20,7 @@ const DEFAULT_CONFIG = {
   playStartTimeoutSeconds: 20,   // 结束后等待平台自动连播的时长
   navCooldownSeconds: 20,        // 两次页面导航之间的最小间隔
   maxClicks: 20,                 // 单次加载累计点击上限，防跑飞
-  haltKeywords: ['考试', '验证码', '人脸', '拍照', '身份核验', '重新登录', '登录已过期'],
+  haltKeywords: ['开始考试', '进入考试', '考试倒计时', '交卷', '验证码', '人脸', '拍照', '身份核验', '重新登录', '登录已过期'],
   candidateTextPattern: /下一|继续|next|学习|课程|章|节/i,
 };
 
