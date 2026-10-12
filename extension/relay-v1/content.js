@@ -78,6 +78,7 @@ function startRelay(userConfig) {
     lastNavAt: 0,
     clicks: 0,
     reported: new Set(),
+    warned: new Set(),
     endedFlags: new WeakSet(),
   };
   let stopped = false;
@@ -213,7 +214,12 @@ function startRelay(userConfig) {
   function haltIfSensitive() {
     const bodyText = (doc.body && doc.body.innerText) || '';
     const hit = cfg.haltKeywords.find((k) => bodyText.includes(k));
-    if (hit) { halt(`页面出现敏感环节关键词：“${hit}”，转人工`); return true; }
+    if (!hit) return false;
+    if (cfg.autoClick) { halt(`页面出现敏感环节关键词：“${hit}”，转人工`); return true; }
+    if (!state.warned.has(hit)) {
+      state.warned.add(hit);
+      log(`学习模式提示：页面含“${hit}”，不停止（autoClick=false 不上手）`);
+    }
     return false;
   }
 
