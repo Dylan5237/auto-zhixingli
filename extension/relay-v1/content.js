@@ -6,14 +6,16 @@
  */
 'use strict';
 
-const RELAY_VERSION = '0.1.1';
+const RELAY_VERSION = '0.1.2';
 
 const DEFAULT_CONFIG = {
   autoClick: false,              // true 才允许真实元素点击；false = 学习模式只观察
-  courseListUrl: '',             // 课程列表页地址，人工观察后填写，如 'https://u.exexm.com/...'
+  courseListUrl: '',             // 可选：列表页直达地址；未配置时改点底部导航“学习”
   nextChapterSelector: '',       // 课内“下一节/继续学习”控件的 CSS 选择器
-  courseEntrySelector: '',       // 列表页课程条目的 CSS 选择器
-  coursePickRule: 'first',       // first | index:N | contains:文本
+  courseEntrySelector: 'ion-card.course-list ion-item.exe-learn-course-pic',
+  coursePickRule: 'index:1',     // first | index:N | contains:文本；index:1 跳过首个(通常为刚结束课程)
+  courseStartSelector: '',       // 课程详情页“继续学习/开始学习”按钮选择器
+  learnNavText: '学习',          // 底部导航进入课程列表的按钮文本
   tickMs: 2000,
   endConfirmSeconds: 8,          // 全部媒体静止后确认自然结束的时长
   stallSeconds: 25,              // 活动媒体进度停滞判定时长
@@ -82,6 +84,9 @@ function startRelay(userConfig) {
     reported: new Set(),
     warned: new Set(),
     listSig: null,
+    listDetected: false,
+    startClicked: false,
+    lastHref: location.href,
     endedFlags: new WeakSet(),
   };
   let stopped = false;
@@ -202,9 +207,18 @@ function startRelay(userConfig) {
     const sig = JSON.stringify(entries.map((e) => e.text));
     if (sig === state.listSig) return false;   // 条目内容没变就不重复输出
     state.listSig = sig;
-    log(`检测到课程列表页（“${cfg.listMarkerText}”），条目候选：`, JSON.stringify(entries, null, 1));
+    if (entries.length) state.listDetected = true;
+    log(`检测到课程列表页（“${cfg.listMarkerText}” @ ${location.href}），条目候选：`, JSON.stringify(entries, null, 1));
     if (entries.length) setBanner('检测到课程列表页：条目候选见 Console');
     return true;
+  }
+
+  function findLearnNavButton() {
+    const norm = (s) => (s || '').replace(/\s+/g, '').trim();
+    const target = norm(cfg.learnNavText);
+    const hits = [...doc.querySelectorAll('button.item.item-block,button,a,[role="button"],div.panel-item,li,span')]
+      .filter((el) => norm(el.innerText) === target);
+    return hits.length ? hits[hits.length - 1] : null;
   }
 
   function clickEl(el, why) {
@@ -283,13 +297,18 @@ function startRelay(userConfig) {
     if (state.phase === 'wait-play') {
       if (now() - state.endedAt > cfg.playStartTimeoutSeconds * 1000) {
         halt('新页面媒体未开始播放：可能需人工点击播放（自动播放策略）');
-      } else {
-        setBanner('等待新页面开始播放…');
+        return;
       }
+      if (cfg.courseStartSelector && !state.startClicked) {
+        const startBtn = doc.querySelector(cfg.courseStartSelector);
+        if (startBtn) { state.startClicked = true; clickEl(startBtn, '课程开始学习'); }
+      }
+      setBanner('等待新页面开始播放…');
       return;
     }
 
     if (!naturalEnd) {
+      if (stillFor > 5) reportCandidates('idle');
       setBanner('接力观察中：未检测到活动媒体');
       return;
     }
@@ -310,29 +329,47 @@ function startRelay(userConfig) {
         state.phase = 'click-next';
         if (clickEl(nextBtn, '课内下一节')) {
           state.endedAt = now();
+          state.startClicked = false;
           state.phase = 'wait-play';
         }
         return;
       }
       reportCandidates('no-next');
+      state.phase = 'goto-list';
       if (cfg.courseListUrl) {
-        state.phase = 'goto-list';
         navTo(cfg.courseListUrl, '课程结束去列表');
         setBanner('课程结束：前往课程列表');
+      } else if (cfg.autoClick) {
+        const navBtn = findLearnNavButton();
+        if (navBtn && clickEl(navBtn, '底部导航·学习')) setBanner('课程结束：前往课程列表');
+        else if (!navBtn) halt('课程结束：找不到底部导航“学习”按钮，转人工');
       } else {
-        halt('课程结束：未配置 courseListUrl，转人工');
+        if (!state.warned.has('nav')) {
+          state.warned.add('nav');
+          log('学习模式：课程结束，请人工点击底部导航“学习”进入课程列表');
+        }
+        setBanner('课程结束：请人工点击底部导航“学习”');
       }
       return;
     }
 
     if (state.phase === 'goto-list') {
-      onListPage();
+      const urlOk = cfg.courseListUrl && location.href.startsWith(cfg.courseListUrl.split('#')[0]);
+      if (state.listDetected || urlOk) {
+        state.phase = 'pick-course';
+        onListPage();
+      } else {
+        setBanner('正在前往课程列表…');
+      }
+      return;
     }
+
+    if (state.phase === 'pick-course') onListPage();
   }
 
   function onListPage() {
-    if (!location.href.startsWith(cfg.courseListUrl.split('#')[0])) return;
-    if (state.phase === 'goto-list') state.phase = 'pick-course';
+    const urlOk = !cfg.courseListUrl || location.href.startsWith(cfg.courseListUrl.split('#')[0]);
+    if (!urlOk && !state.listDetected) return;
     const entries = cfg.courseEntrySelector
       ? [...doc.querySelectorAll(cfg.courseEntrySelector)].map((el, i) => ({ el, i, text: (el.innerText || '').trim().slice(0, 60) }))
       : [];
@@ -343,10 +380,18 @@ function startRelay(userConfig) {
     }
     const idx = RelayLogic.pickCourseIndex(entries, cfg.coursePickRule);
     if (idx < 0) { halt('coursePickRule 未匹配任何条目，转人工'); return; }
-    if (clickEl(entries[idx].el, `选择课程[${idx}]`)) {
-      state.endedAt = now();
-      state.phase = 'wait-play';
-      setBanner('已选择课程：等待播放');
+    if (state.phase !== 'pick-course') state.phase = 'pick-course';
+    if (cfg.autoClick) {
+      if (clickEl(entries[idx].el, `选择课程[${idx}]`)) {
+        state.endedAt = now();
+        state.startClicked = false;
+        state.phase = 'wait-play';
+        setBanner('已选择课程：等待播放');
+      }
+    } else if (!state.warned.has('pick')) {
+      state.warned.add('pick');
+      log(`学习模式：请人工点击课程条目[${idx}]：`, entries[idx].text);
+      setBanner(`学习模式：请人工点击课程条目[${idx}]`);
     }
   }
 
@@ -356,7 +401,8 @@ function startRelay(userConfig) {
       version: RELAY_VERSION,
       config: cfg,
       logic: RelayLogic,
-      status: () => ({ phase: state.phase, clicks: state.clicks, banner: bannerText }),
+      status: () => ({ phase: state.phase, clicks: state.clicks, banner: bannerText, listDetected: state.listDetected }),
+      gotoList: () => { state.phase = 'goto-list'; log('手动触发：phase=goto-list'); },
       stop,
     };
     state.lastNavAt = 0;
@@ -369,8 +415,18 @@ function startRelay(userConfig) {
     reportListCandidates();
     timers.push(setInterval(tick, cfg.tickMs));
     timers.push(setInterval(() => {
+      if (location.href !== state.lastHref) {
+        state.lastHref = location.href;
+        state.reported.delete('idle');
+        state.listSig = null;
+        log('页面地址变化：', location.href);
+      }
       reportListCandidates();
-      if (cfg.courseListUrl && location.href.startsWith(cfg.courseListUrl.split('#')[0]) && state.phase === 'watch') {
+      const urlOk = cfg.courseListUrl && location.href.startsWith(cfg.courseListUrl.split('#')[0]);
+      if (urlOk && state.phase === 'watch') {
+        state.phase = 'pick-course';
+        onListPage();
+      } else if (state.listDetected && state.phase === 'goto-list') {
         state.phase = 'pick-course';
         onListPage();
       }
