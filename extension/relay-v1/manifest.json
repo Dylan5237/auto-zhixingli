@@ -1,8 +1,10 @@
 {
   "manifest_version": 3,
   "name": "auto-zhixingli relay v1 (local)",
-  "version": "0.1.0",
-  "description": "本地自用：课程自然结束后按配置接力下一门课。默认学习模式只观察不上手。不录音、不联网外传、不碰平台接口与存储。",
+  "version": "0.2.0",
+  "description": "本地自用：明确整课完成后接力指定课程，点选真实入口并确认播放。不录音、不联网外传、不碰平台接口与存储。",
+  "permissions": ["storage"],
+  "background": { "service_worker": "session.js" },
   "content_scripts": [
     {
       "matches": ["*://u.exexm.com/*"],
